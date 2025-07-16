@@ -342,6 +342,11 @@ void AssemblyLink::synchronizeComponents()
                 }
             }
         }
+
+        // check if the linked object's label is different from the original label
+        if (obj->Label.getValue() != link->Label.getValue()) {
+            link->Label.setValue(obj->Label.getValue());
+        }
     }
 
     // We check if a component needs to be removed from the AssemblyLink
