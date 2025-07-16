@@ -71,6 +71,7 @@ public:
     void updateContents();
 
     void synchronizeComponents();
+    void synchronizeFolders();
     void synchronizeJoints();
     void handleJointReference(App::DocumentObject* joint,
                               App::DocumentObject* lJoint,

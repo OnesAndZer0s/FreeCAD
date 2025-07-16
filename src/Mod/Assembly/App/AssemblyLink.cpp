@@ -21,6 +21,7 @@
  *                                                                          *
  ***************************************************************************/
 
+#include "App/PropertyLinks.h"
 #include "PreCompiled.h"
 #ifndef _PreComp_
 #include <cmath>
@@ -168,6 +169,8 @@ void AssemblyLink::updateContents()
 {
     synchronizeComponents();
 
+    synchronizeFolders();
+    
     if (isRigid()) {
         ensureNoJointGroup();
     }
@@ -175,6 +178,86 @@ void AssemblyLink::updateContents()
         synchronizeJoints();
     }
     purgeTouched();
+}
+
+void AssemblyLink::synchronizeFolders()
+{
+    App::Document* doc = getDocument();
+
+    AssemblyObject* assembly = getLinkedAssembly();
+    if (!assembly) {
+        return;
+    }
+
+    std::vector<App::DocumentObject*> assemblyGroup = assembly->Group.getValues();
+    std::vector<App::DocumentObject*> assemblyLinkGroup = Group.getValues();
+
+    // We check if a folder needs to be added to the AssemblyLink
+    for (auto* obj : assemblyGroup) {
+        if ((!obj->isDerivedFrom<App::Link>() && !obj->isDerivedFrom<App::DocumentObjectGroup>()) || obj->isDerivedFrom<JointGroup>()) {
+            continue;
+        }
+
+        // look for a group that we have already created
+        App::DocumentObject* link = nullptr;
+        bool found = false;
+        for (auto* obj2 : assemblyLinkGroup) {
+            App::DocumentObject* linkedObj;
+
+            auto* group = dynamic_cast<App::DocumentObjectGroup*>(obj2);
+            if (group) {
+                auto prop = group->getPropertyByName("_Link");
+                if (prop) {
+                    linkedObj = dynamic_cast<App::PropertyLinkGlobal*>(prop)->getValue();
+                    
+                    if (linkedObj == obj) {
+                        found = true;
+                        link = obj2;
+                        break;
+                    }
+                }
+            }    
+        }
+
+        if (!found) {
+            auto* groupLink = new App::DocumentObjectGroup();
+            doc->addObject(groupLink, obj->getNameInDocument());
+            auto prop = static_cast<App::PropertyLinkGlobal*>(
+                groupLink->addDynamicProperty("App::PropertyLinkGlobal",
+                                        "_Link",
+                                        nullptr,
+                                        nullptr,
+                                        App::Prop_Output | App::Prop_Hidden));
+            prop->setValue(obj);
+            groupLink->Label.setValue(obj->Label.getValue());
+            addObject(groupLink);
+            link = groupLink;
+        }
+
+        objLinkMap[obj] = link;
+    }
+
+    // We check if a group needs to be removed from the AssemblyLink
+    for (auto* link : assemblyLinkGroup) {
+        // We don't need to update assemblyLinkGroup after the addition since we're not removing
+        // something we just added.
+            auto* group = dynamic_cast<App::DocumentObjectGroup*>(link);
+            if (group) {
+                auto prop = group->getPropertyByName("_Link");
+                if (prop) {
+                    auto* linkedObj = dynamic_cast<App::PropertyLinkGlobal*>(prop)->getValue();
+                    if (!linkedObj || linkedObj->getDocument() != doc) {
+                        doc->removeObject(link->getNameInDocument());
+                        continue;
+                    }
+
+                    // if the labels are different, update the link label
+                    if (linkedObj->Label.getValue() != link->Label.getValue()) {
+                        link->Label.setValue(linkedObj->Label.getValue());
+                    }
+                }
+            }
+    }
 }
 
 void AssemblyLink::synchronizeComponents()
